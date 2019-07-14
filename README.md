@@ -19,7 +19,6 @@ Use two 1-10K resistors to divide the 12V (any reason to divide the 12V? or just
 also use the 5V for the signal too? (would probably still need some resistors,
 to not just short that power supply)
 
-
 The gripper is for moving scintillation vials on and off of the scale, and the
 serological pipette is for filling the vials on the scale, using a stock vial
 somewhere else in the workspace.

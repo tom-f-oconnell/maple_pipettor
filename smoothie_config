@@ -238,7 +238,9 @@ switch.servo.input_on_command         M280
 # Same as M280 S0 0% duty cycle, effectively off
 switch.servo.input_off_command        M281
 # May be any spare pin
-switch.servo.output_pin               2.7 #3.25
+# TODO could try 2.8 w/ swpwm, but it's not hardware pwm capable
+# some of the neighboring pins are...
+switch.servo.output_pin               3.25 # 2.7
 # Software pwm output settable with S parameter in the input_on_command
 switch.servo.output_type              hwpwm #swpwm
 # set period to 20ms (50Hz) default is 50Hz
