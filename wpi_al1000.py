@@ -253,7 +253,10 @@ class AL1000(object):
         self.start_program()
 
 
-    def dispense(self, ml):
+    # TODO TODO TODO some version of this that blocks until syringe is done!
+    # could poll (maybe ideal, to handle err conditions on pump) or sleep
+    # for time considering pump rate
+    def dispense(self, ml, block=True):
         """Dispenses volume in mL
         """
         # TODO retract pump first / detect when syringe needs to be changed /

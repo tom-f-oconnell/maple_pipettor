@@ -33,24 +33,20 @@ def move_gripper_servo(robot, s_position):
     Requires different Smoothieware configuration than default MAPLE.
     Use smoothie_config in this repository.
     """
-    if robot is not None:
-        # TODO add trailing newline in sendSyncCmd/sendCmd automatically
-        cmd = 'M280 S{}\n'.format(s_position)
-        robot.smoothie.sendSyncCmd(cmd)
+    # TODO add trailing newline in sendSyncCmd/sendCmd automatically
+    cmd = 'M280 S{}\n'.format(s_position)
+    robot.smoothie.sendSyncCmd(cmd)
 
 
-def fully_open_gripper(robot):
-    move_gripper_servo(robot, 2.7)
-
-
-def grip_vial(robot):
-    move_gripper_servo(robot, 4.5)
+def grip_vial(robot, pos=4.3):
+    # 4.3 might help keep the vial slightly straigher than 4.5?
+    # it is definitely a little looser
+    move_gripper_servo(robot, pos) #, 4.3) #4.5)
+    # TODO min delay that is appropriate?
     robot.dwell_ms(1000)
-    # TODO robot.dwell_ms here?
 
 
 def release_vial(robot):
-    #move_gripper_servo(robot, 3)
     move_gripper_servo(robot, 2.7)
 
 
@@ -62,8 +58,10 @@ class ScintillationVialBox(maple.module.Array):
     def __init__(self, robot, offset, vial_grip_height,
         calibration_approach_from=None, verbose=False):
         """
-        vial_grip_height: how high up from worksurface vial should be gripped,
-            if vial were resting on worksurface
+        #vial_grip_height: how high up from worksurface vial should be gripped,
+        #    if vial were resting on worksurface
+        vial_grip_height: defined w/ 0 as home point on Z2, and positive going
+            down, now; for simplicity.
         """
         gripper_working_height = vial_grip_height
         # TODO TODO TODO check that n_rows is referring to the Y (towards/away
@@ -78,7 +76,7 @@ class ScintillationVialBox(maple.module.Array):
         # to flip the vial when replacing it, since they are supported on all
         # sides, and thus less likely to get bent
         n_cols = 8
-        n_rows = 8
+        n_rows = 7
 
         # The taller two edges of the box are 64mm.
         # TODO how did i come to (100, 100, 40)? mm, right? (same w/ (5,5) for
@@ -112,42 +110,57 @@ class ScintillationVialBox(maple.module.Array):
         # separate state variables for vial presence and fill status?
 
 
+    # TODO TODO delete the this testing logic / move into maple
+    # (just disable z? i have one other comment on this somewhere)
+    testing = False
+    #testing = True
+    test_buffer = 20
     def get(self, xy, ij):
         """
         """
         # TODO TODO factor working distance z travels into parent class
         # (otherwise little point in the shared instance variable)
         # TODO rename latter to z2_.. in maple
-        zw = self.robot.z2_to_worksurface - self.flymanip_working_height
-        if self.robot is not None:
-            # TODO delete
-            print('MOVING TO', xy)
-            #
-            self.robot.moveXY(xy)
+        #zw = self.robot.z2_to_worksurface - self.flymanip_working_height
+        # (for simplicity, using smoothie coords now)
+        zw = self.flymanip_working_height
+        if self.testing:
+            zw -= self.test_buffer
+            zw = max(zw, 0)
 
-            # TODO assert we aren't carrying a vial or something?
-            # do something like that in array by default?
-            # (should work same way w/ flies)
-            # To open grippers so they can fit around the vial.
-            #self.robot.dwell_ms(500)
-            release_vial(self.robot)
-            #self.robot.dwell_ms(500)
+        # TODO delete
+        print('MOVING TO', xy)
+        #
+        self.robot.moveXY(xy)
 
-            # TODO delete
-            print('MOVING Z2 TO', zw)
-            #
-            self.robot.moveZ2(zw)
+        # TODO assert we aren't carrying a vial or something?
+        # do something like that in array by default?
+        # (should work same way w/ flies)
+        # To open grippers so they can fit around the vial.
+        #self.robot.dwell_ms(500)
+        release_vial(self.robot)
+        #self.robot.dwell_ms(500)
+
+        # TODO delete
+        print('MOVING Z2 TO', zw)
+        #
+        self.robot.moveZ2(zw)
 
         #
-        #import ipdb; ipdb.set_trace()
+        ##import ipdb; ipdb.set_trace()
         #
+        
         grip_vial(self.robot)
 
         # Although all get/put calls get flanked by moving effectors to travel
         # height, need to move higher when we are holding a vial, as otherwise
         # it would crash into the box when moving.
-        zvial = zw - self.flymanip_working_height #- 2
+        #zvial = zw - self.flymanip_working_height - 3
+        # (to simplify things for now)
+        zvial = 0
         # TODO delete
+        if self.testing:
+            zvial = max(0, zvial)
         print('MOVING Z2 TO', zvial)
         #
         self.robot.moveZ2(zvial)
@@ -156,12 +169,20 @@ class ScintillationVialBox(maple.module.Array):
     def put(self, xy, ij):
         """
         """
-        zw = self.robot.z2_to_worksurface - self.flymanip_working_height
-        if self.robot is not None:
-            self.robot.moveXY(xy)
-            self.robot.moveZ2(zw)
+        #zw = self.robot.z2_to_worksurface - self.flymanip_working_height - 2
+        # (for simplicity, using smoothie coords now)
+        zw = self.flymanip_working_height - 1
+        if self.testing:
+            zw -= self.test_buffer
+            zw = max(zw, 0)
 
+        self.robot.moveXY(xy)
+        self.robot.moveZ2(zw)
         release_vial(self.robot)
+        # also just using absolute smoothie coords for simplicity for now,
+        # rather than rely on auto return (current offsets, like z2_to_w...
+        # are wrong and would cause crashes)
+        self.robot.moveZ2(12)
 
 
 '''
@@ -261,14 +282,39 @@ if __name__ == '__main__':
     # where central config still does most stuff?
     # TODO provide defaults in maple config even? or maybe have 0 at top if 
     # none provided? or have that as another mode?
- 
-    vial_grip_height = 58
-    # 60 is about as far down as i want the z axis to go
-    #robot.z2_to_worksurface = 60 + vial_grip_height
-    robot.z2_to_worksurface = 60 + vial_grip_height
 
-    vialbox_offset = (690 + 29, -14.5)
+    # TODO TODO replace all other places that use "if robot is None"
+    # check for dry run w/ some mock robot class / dryrun flag in robotutil
+ 
+    # TODO are the lhs and vial_grip_height really interacting as i want?
+    # shouldn't changing vial_grip_height not affect where worksurface is
+    # defined?
+    vial_grip_height = 59.5
+    # 60 is about as far down as i want the z axis to go
+    # TODO try to only go to to 58 intead of 60 (vial_grip_height is subtracted
+    # off when computing working height for gripper)? may need to change some
+    # other values to avoid limit when going up.
+    # 62 def holds vial a little straighter than 60 (w/ vial_grip_height=58),
+    # but pushes on box edges a little. any less work?
+    # 61 doesn't work that well.
+    #robot.z2_to_worksurface = 60 + vial_grip_height
+    # currently just used for automatic return in module get_/put_
+    robot.z2_to_worksurface = 118
+
+    correction_x = 0
+    correction_y = 17
+    vialbox_offset = (690 + 29 + correction_x, -14.5 + correction_y)
     vialbox = ScintillationVialBox(robot, vialbox_offset, vial_grip_height)
+
+    # TODO TODO probably refactor calibration_approach_from into just
+    # approach_from, which is used in calibration and during motions, for
+    # best applicability of calibration, or for controlling backlash w/o
+    # calibration. w/ separate flag to calibrate?
+
+    # In hopes that after controlling backlash a little, the gripper can be
+    # centered on each vial a little better, maybe making things reliable
+    # enough. Using a corner for the most consistent approach directions.
+    approach_from = vialbox.anchor_center(0, 0)
 
     syringepump_xy = (632, 175)
     syringepump_z = 22
@@ -292,11 +338,13 @@ if __name__ == '__main__':
         # TODO TODO TODO need to wait for pump to finish.
         # probably poll the pump at some interval.
         #
-        robot.dwell_ms(3000)
+        robot.dwell_ms(1000)
         #
 
         robot.moveXY(pump_xy_approach[-1])
-        zvial_travel = robot.z2_to_worksurface - 2 * vial_grip_height # - 2
+        #zvial_travel = robot.z2_to_worksurface - 2 * vial_grip_height - 3
+        # (to simplify things for now)
+        zvial_travel = 0
         # TODO delete
         print('moving back to vial travel height:', zvial_travel)
         #
@@ -306,36 +354,44 @@ if __name__ == '__main__':
 
     # TODO delete
 
-    # TODO TODO this seems to hang under some conditions when program is
-    # restarted after being stopped in debugging. fix if possible!
-    # (other servo commands are also timing out, like in grip)
-    #fully_open_gripper(robot)
-
     initial = True
-    for i in range(vialbox.n_cols):
-        for j in range(vialbox.n_rows):
-            if not initial:
+    robot.moveZ2(0)
+    for x in range(vialbox.n_cols // 2):
+        for y in range(vialbox.n_rows // 2):
+            for corner in range(4):
+                if corner == 0:
+                    i = x
+                    j = y
+                elif corner == 1:
+                    i = x
+                    j = vialbox.n_rows - y - 1
+                elif corner == 2:
+                    i = vialbox.n_cols - x - 1
+                    j = y
+                elif corner == 3:
+                    i = vialbox.n_cols - x - 1
+                    j = vialbox.n_rows - y - 1
+                print (i, j)
+                '''
+                if not initial:
+                    vialbox.put_indices(i, j)
+                else:
+                    initial = False
+                #import ipdb; ipdb.set_trace()
+                '''
+                # To keep backlash more consistent.
+                robot.moveXY(approach_from)
+                vialbox.get_indices(i, j)
+                #import ipdb; ipdb.set_trace()
+
+                fill_vial()
+
+                robot.moveXY(approach_from)
                 vialbox.put_indices(i, j)
-            else:
-                initial = False
-            vialbox.get_indices(i, j)
-
-    import ipdb; ipdb.set_trace()
-    vialbox.get_indices(0, 0)
-    import ipdb; ipdb.set_trace()
-    fill_vial()
-    import ipdb; ipdb.set_trace()
-    vialbox.put_indices(0, 0)
-    import ipdb; ipdb.set_trace()
-
-    #vialbox.get_indices(4, 0)
+                #import ipdb; ipdb.set_trace()
 
     # TODO some move_over fn / no_z flag for get_indices, for testing?
     # or just move smoothie?
-    # TODO some test picking up vials and moving them / putting them back down
-    vialbox.get_indices(5, 4)
-    import ipdb; ipdb.set_trace()
-
     #
 
     # TODO move up / over one + put it back
