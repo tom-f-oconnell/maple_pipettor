@@ -9,13 +9,19 @@ from __future__ import print_function
 from __future__ import division
 
 import os
-#
-import time
-#
+import sys
 
 import maple
 import maple.robotutil
 import maple.module
+
+import wpi_al1000
+
+
+try:
+    input = raw_input
+except NameError:
+    pass
 
 
 def move_gripper_servo(robot, s_position):
@@ -116,7 +122,7 @@ class ScintillationVialBox(maple.module.Array):
     #testing = True
     test_buffer = 20
     def get(self, xy, ij):
-        """
+        """Moves to a vial and picks it up.
         """
         # TODO TODO factor working distance z travels into parent class
         # (otherwise little point in the shared instance variable)
@@ -128,28 +134,16 @@ class ScintillationVialBox(maple.module.Array):
             zw -= self.test_buffer
             zw = max(zw, 0)
 
-        # TODO delete
-        print('MOVING TO', xy)
-        #
         self.robot.moveXY(xy)
 
         # TODO assert we aren't carrying a vial or something?
         # do something like that in array by default?
         # (should work same way w/ flies)
         # To open grippers so they can fit around the vial.
-        #self.robot.dwell_ms(500)
         release_vial(self.robot)
-        #self.robot.dwell_ms(500)
 
-        # TODO delete
-        print('MOVING Z2 TO', zw)
-        #
         self.robot.moveZ2(zw)
 
-        #
-        ##import ipdb; ipdb.set_trace()
-        #
-        
         grip_vial(self.robot)
 
         # Although all get/put calls get flanked by moving effectors to travel
@@ -158,16 +152,11 @@ class ScintillationVialBox(maple.module.Array):
         #zvial = zw - self.flymanip_working_height - 3
         # (to simplify things for now)
         zvial = 0
-        # TODO delete
-        if self.testing:
-            zvial = max(0, zvial)
-        print('MOVING Z2 TO', zvial)
-        #
         self.robot.moveZ2(zvial)
 
 
     def put(self, xy, ij):
-        """
+        """Moves to a (presumed empty) space in the box and releases the vial.
         """
         #zw = self.robot.z2_to_worksurface - self.flymanip_working_height - 2
         # (for simplicity, using smoothie coords now)
@@ -185,99 +174,13 @@ class ScintillationVialBox(maple.module.Array):
         self.robot.moveZ2(12)
 
 
-'''
-# TODO maybe inherit maple.module?
-class Scale:
-    def __init__(self, robot, offset, port='/dev/ttyACM0'):
-        from mettler_toledo_device import MettlerToledoDevice
-
-        self.robot = robot
-        self.offset = offset
-        self.z0_working_height = 5.0
-        # TODO rename to z2
-        self.flymanip_working_height = 12.0
-
-        self.scale = MettlerToledoDevice(port=port)
-        print(self.scale.get_balance_data())
-
-
-   def fill_vial(self):
-        """Take a vial to the scale, and fill it to a certain mass.
-        Pick it up afterwards.
-        """
-        zt = self.robot.z2_to_worksurface - self.extent[2]
-        if self.robot is not None:
-            self.robot.moveZ2(zt)
-
-        zw = self.robot.z2_to_worksurface - self.flymanip_working_height
-        if self.robot is not None:
-            self.robot.moveXY(xy)
-            self.robot.moveZ2(zw)
-
-        release_vial(self.robot)
-
-        if self.robot is not None:
-            self.robot.moveZ2(zt)
-
-        # TODO TODO fill up serological pipette
-
-        # TODO travel back to vial
-
-        # TODO empty (w/ some kind of control) until we hit appropriate mass
-
-        # TODO maybe blow out extra pfo? (if would drip too much otherwise)
-
-
-class StockContainer:
-    def __init__(self, robot, center):
-        self.robot = robot
-        self.center = center
-        self.z0_working_height = 5.0
-        # TODO rename to z2
-        self.flymanip_working_height = 12.0
-        self.z_extent = 50.0
-
-
-    # TODO factor something like this into another maple class of physical
-    # objects w/ positions (+ heights? + travel heights?)
-    def center_over(self):
-        # TODO also move z2 above minimum height?
-        zt = self.robot.z0_to_worksurface - self.z_extent
-        if self.robot is not None:
-            self.robot.moveZ0(zt)
-
-        zw = self.robot.z0_to_worksurface - self.z0_working_height
-        if self.robot is not None:
-            self.robot.moveXY(center)
-            self.robot.moveZ0(zw)
-
-
-    def load_pipette(self):
-        self.center_over()
-        # TODO pulse?
-        self.robot.smallPartManipAir(False)
-        self.robot.smallPartManipVac(True)
-        # TODO test this. need feedback?
-        self.robot.dwell_ms(5000)
-        self.robot.smallPartManipVac(False)
-        # TODO need to pulse aftwerwards?
-
-
-    def clear_pipette(self):
-        self.center_over()
-        self.robot.smallPartManipVac(False)
-        self.robot.smallPartManipAir(True)
-        self.robot.dwell_ms(3000)
-        self.robot.smallPartManipAir(False)
-        # TODO move back to height?
-'''
-
-
 if __name__ == '__main__':
+    print('Vialbox should be oriented so the side facing you reads A-J')
+
     # TODO is this not the default config? just defer to whatever default
     # settings there are, whether this file or something else?
     robot = maple.robotutil.MAPLE(os.path.join(maple.__path__[0], 'MAPLE.cfg'),
-        enable_z0=False, enable_z1=False, z2_has_crash_sensor=False, home=False)
+        enable_z0=False, enable_z1=False, z2_has_crash_sensor=False)#, home=False)
     # TODO TODO put these hardcoded offsets in some config? some override config
     # where central config still does most stuff?
     # TODO provide defaults in maple config even? or maybe have 0 at top if 
@@ -316,45 +219,62 @@ if __name__ == '__main__':
     # enough. Using a corner for the most consistent approach directions.
     approach_from = vialbox.anchor_center(0, 0)
 
+    '''
     syringepump_xy = (632, 175)
     syringepump_z = 22
     pump_xy_approach = [
         (660, 160),
         (syringepump_xy[0], 160)
     ]
-    def fill_vial():
+    pump = wpi_al1000.AL1000()
+
+    cc_str = input('Size of syringe in mL (default=60)? ')
+    if len(cc_str) == 0:
+        cc = 60
+    else:
+        cc = int(cc_str)
+
+    if cc == 60:
+        print('Assuming the 60mL syringe is a BD plastic syringe!')
+        family = 'B-D'
+    elif cc == 20:
+        print('Assuming the 20mL syringe is a Norm-Ject plastic syringe ' +
+            '(marked HSW)!')
+        family = 'NORM-JECT'
+
+    pump.set_syringe(family=family, cc=cc)
+    # TODO delete. for testing.
+    pump.capacity = 5.0
+    #
+    def fill_vial(vol_ml):
         """Moves vial under syringe pump output.
         Assumes Z2 is at appropriate travel height already.
         """
+        have_vol = pump.can_dispense(vol_ml)
+        if not have_vol:
+            input('Re-fill syringe and press Enter to continue...')
+            pump.clear_vol_disp()
+
         for xy in pump_xy_approach:
             robot.moveXY(xy)
-        old_z = robot.currentPosition[-1]
         # Only doing this after gripper is no longer over box,
         # as a good height here might crash into box.
         robot.moveZ2(syringepump_z)
         robot.moveXY(syringepump_xy)
-
-        ###pump.dispense(2.0)
-        # TODO TODO TODO need to wait for pump to finish.
-        # probably poll the pump at some interval.
-        #
-        robot.dwell_ms(1000)
-        #
+        
+        pump.dispense(vol_ml)
 
         robot.moveXY(pump_xy_approach[-1])
         #zvial_travel = robot.z2_to_worksurface - 2 * vial_grip_height - 3
         # (to simplify things for now)
         zvial_travel = 0
-        # TODO delete
-        print('moving back to vial travel height:', zvial_travel)
-        #
         robot.moveZ2(zvial_travel)
         for xy in pump_xy_approach[:-1][::-1]:
             robot.moveXY(xy)
+    '''
 
     # TODO delete
-
-    initial = True
+    """
     robot.moveZ2(0)
     for x in range(vialbox.n_cols // 2):
         for y in range(vialbox.n_rows // 2):
@@ -372,52 +292,97 @@ if __name__ == '__main__':
                     i = vialbox.n_cols - x - 1
                     j = vialbox.n_rows - y - 1
                 print (i, j)
-                '''
-                if not initial:
-                    vialbox.put_indices(i, j)
-                else:
-                    initial = False
-                #import ipdb; ipdb.set_trace()
-                '''
                 # To keep backlash more consistent.
                 robot.moveXY(approach_from)
                 vialbox.get_indices(i, j)
                 #import ipdb; ipdb.set_trace()
 
-                fill_vial()
+                fill_vial(2.0)
 
                 robot.moveXY(approach_from)
                 vialbox.put_indices(i, j)
                 #import ipdb; ipdb.set_trace()
+    """
+    weigh_aliquots = True
+    if weigh_aliquots:
+        from mettler_toledo_device import MettlerToledoDevice
+        scale = MettlerToledoDevice(port='/dev/ttyUSB0')
+        print(scale.get_balance_data())
+        #import pdb; pdb.set_trace()
+        scale_xy = (632, 135)
+        # TODO find a good value
+        scale_z = 28
 
-    # TODO some move_over fn / no_z flag for get_indices, for testing?
-    # or just move smoothie?
-    #
+        def weigh_vial():
+            """Returns vial weight in grams. Assumes start at safe Z height.
+            """
+            robot.moveXY(scale_xy)
+            robot.moveZ2(scale_z)
 
-    # TODO move up / over one + put it back
+            # TODO release vial slightly above scale (then move that amount
+            # down before gripping it again)?
+            release_vial(robot)
+        
+            ret = None
+            print('Waiting for stable weight... ', end='')
+            sys.stdout.flush()
+            while ret is None:
+                # 2-list w/ float value and str repr of unit (e.g. 'g')
+                # None if weight is not stable.
+                ret = scale.scale.get_weight_stable()
+            print('done')
 
-    '''
-    using_scale = False
-    #scale = Scale()
+            weight = ret[0]
+            assert ret[1] == 'g', \
+                'expected scale units in grams (got {})'.format(ret[1])
 
-    # (empty of empty vials)
-    # TODO break on other conditions / say what needs replaced /
-    # why things stopped
-    while not vialbox.is_empty():
+            grip_vial(robot)
+
+            #zvial_travel = robot.z2_to_worksurface - 2 * vial_grip_height - 3
+            # (to simplify things for now)
+            zvial_travel = 0
+            robot.moveZ2(zvial_travel)
+
+            return weight
+
+    vol_str = input('Target volume (mL) (default=2.00)? ')
+    # Just pressing Enter yields and empty string (at least in Python 2)
+    if len(vol_str) == 0:
+        vol_ml = 2.0
+    else:
+        # TODO also err if out of some range / too many sig figs?
+        vol_ml = float(vol_str)
+
+    max_aliquots = vialbox.n_cols * vialbox.n_rows
+    n_str = input('Number of aliquots? ')
+    n_aliquots = int(n_str)
+    if n_aliquots < 0:
+        raise ValueError('number of aliquots must be positive')
+    elif n_aliquots > max_aliquots:
+        raise ValueError('number of aliquots can not exceed # of reachable ' +
+            'vials ({})'.format(max_aliquots))
+
+    import pdb; pdb.set_trace()
+
+    for i in range(n_aliquots):
         # Grips a vial and moves to working height.
         vialbox.get_next()
 
-        # TODO
-        # Moves to syringe pump and dispenses target volume.
-        # can probably leave vial gripped?
+        # TODO if weigh_aliquots, take vial to scale and measure it first
+        # and again after
+        if weigh_aliquots:
+            empty_vial_g = weigh_vial()
 
+        # TODO maybe make a platform for vial so the manipulator can do either
+        # things while (slow) pump is pumping?
+        # TODO maybe don't do final turn in moving away from pump when going to
+        # scale (assuming weight point is similar enough in X to not crash)
+        fill_vial(vol_ml)
 
-        # Moves full vial to accumulation area.
+        if weigh_aliquots:
+            full_vial_g = weigh_vial()
+            pfo_g = full_vial_g - empty_vial_g
 
-        
-
-        # 2-list w/ float value and str repr of unit (e.g. 'g')
-        # None if weight is not stable.
-        #print(scale.scale.get_weight_stable())
-    '''
+        # TODO TODO TODO get_next -> put_next work as i've implemented it?
+        vialbox.put_next()
 
