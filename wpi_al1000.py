@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 """
 This module implements a driver for the AL1000 syringe pump from World Precision
@@ -133,7 +133,14 @@ class AL1000(object):
         """Returns the pump rate in mL/min
         """
         ret = self._send_command("RAT")
-        rate = float(ret[:-2])
+        try:
+            rate = float(ret[:-2])
+        # For the case where the return value is something other than the rate
+        # string, like some error code.
+        except ValueError:
+            print('Unexpected reply to rate request:', str(ret))
+            raise
+
         vol_unit_char = ret[-2]
         time_unit_char = ret[-1]
         if vol_unit_char == 'U':
@@ -414,14 +421,16 @@ class AL1000(object):
         # TODO implement some kind of viscosity attribute which scales max rate
         # have that settable indep (0.5 is a hardcoded version of this now)
         rate = self.max_rate# * 0.2
+        # TODO actually find an appropriate formula for pfo, so i dont have to
+        # set it after
         self.set_rate(rate, unit='MM')
         # To reflect actual sig figs on pump + verify correct setting.
-        rate = self.get_rate()
-        print('Using rate of {} mL/min'.format(rate))
+        #rate = self.get_rate()
+        #print('Using rate of {} mL/min'.format(rate))
 
 
 def main():
-    pump = AL1000()
+    pump = AL1000(port='/dev/ttyUSB1')
 
     firmware = pump.get_firmware()
     print('firmware version:', firmware)
