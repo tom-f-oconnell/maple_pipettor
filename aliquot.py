@@ -196,7 +196,7 @@ if __name__ == '__main__':
     # TODO is this not the default config? just defer to whatever default
     # settings there are, whether this file or something else?
     robot = maple.robotutil.MAPLE(os.path.join(maple.__path__[0], 'MAPLE.cfg'),
-        enable_z0=False, enable_z1=False, z2_has_crash_sensor=False, home=False)
+        enable_z0=False, enable_z1=False, z2_has_crash_sensor=False)#, home=False)
     # TODO TODO put these hardcoded offsets in some config? some override config
     # where central config still does most stuff?
     # TODO provide defaults in maple config even? or maybe have 0 at top if 
