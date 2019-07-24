@@ -75,6 +75,8 @@ class ScintillationVialBox(maple.module.Array):
         gripper_working_height = vial_grip_height
         # TODO calc offset from full bounds anyway prob, and just adjust based
         # on these bounds?
+        # TODO TODO TODO go back to only using interior stuff. edge can be too
+        # risky, since it's not always as tightly on the grid
         start_letter = 'D'
         end_letter = 'J'
         start_num = 2
@@ -220,7 +222,7 @@ if __name__ == '__main__':
     # currently just used for automatic return in module get_/put_
     robot.z2_to_worksurface = 118
 
-    correction_x = 0
+    correction_x = -3
     correction_y = 0
     vialbox_offset = (754 + correction_x, -14.5 + correction_y)
     vialbox = ScintillationVialBox(robot, vialbox_offset, vial_grip_height)
@@ -266,7 +268,7 @@ if __name__ == '__main__':
 
     # TODO should err if pump is off (right now, seems to still be able to open
     # serial connection?)
-    pump = wpi_al1000.AL1000(port='/dev/ttyUSB1')
+    pump = wpi_al1000.AL1000(port='/dev/ttyUSB0')
 
     cc_str = input('Size of syringe in mL (default=60)? ')
     cc = 60
@@ -288,6 +290,7 @@ if __name__ == '__main__':
         pump.capacity = capacity
 
     pump.set_syringe(family=family, cc=cc)
+    drop_wait_s = 20
     def fill_vial(vol_ml):
         """Moves vial under syringe pump output.
         Assumes Z2 is at appropriate travel height already.
@@ -305,7 +308,6 @@ if __name__ == '__main__':
         robot.moveXY(syringepump_xy)
         
         pump.dispense(vol_ml)
-        drop_wait_s = 20
         print('Waiting {} seconds for drops to fall... '.format(drop_wait_s),
             end='')
         sys.stdout.flush()
@@ -322,7 +324,7 @@ if __name__ == '__main__':
 
     if weigh_aliquots:
         from mettler_toledo_device import MettlerToledoDevice
-        scale = MettlerToledoDevice(port='/dev/ttyUSB0')
+        scale = MettlerToledoDevice(port='/dev/ttyUSB2')
 
         # TODO some scale command to automate this? setting to make it not
         # sleep?
@@ -377,8 +379,11 @@ if __name__ == '__main__':
             return weight
 
     # TODO delete
-    '''
+    # TODO prompt to integrate this as an optional check before starting
+    # (and how to make accept / reject / correction entry user friendly?)
+    """
     robot.moveZ2(0)
+    points = 4
     for x in range(vialbox.n_cols // 2):
         for y in range(vialbox.n_rows // 2):
             for corner in range(4):
@@ -400,18 +405,29 @@ if __name__ == '__main__':
                 # To keep backlash more consistent.
                 robot.moveXY(approach_from)
                 robot.moveXY((ix,jy))
+                # TODO this ok?
+                robot.moveZ2(30)
+                #
                 import ipdb; ipdb.set_trace()
+                points -= 1
+                if points <= 1:
+                    break
+                '''
                 vialbox.get_indices(i, j)
 
                 #robot.moveXY(approach_from)
                 vialbox.put_indices(i, j)
                 import ipdb; ipdb.set_trace()
-    '''
+                '''
+    robot.moveZ2(0)
+    """
+
+    # TODO TODO allow user to answer questions while robot is homing
 
     # rates as low as 2 have caused slipping in my use case
     # (maybe also 1.5?)
     max_rate = 1.5
-    rate = 1.0
+    rate = 1.2
     rate_str = input('Pumping rate (mL/min) (default={}, max={})? '.format(
         rate, max_rate))
     if len(rate_str) != 0:
@@ -426,17 +442,18 @@ if __name__ == '__main__':
     vol_str = input('Target volume (mL) (default=2.00)? ')
     # Just pressing Enter yields and empty string (at least in Python 2)
     if len(vol_str) == 0:
-        vol_ml = 2.0
+        target_vol_ml = 2.0
     else:
         # TODO also err if out of some range / too many sig figs?
-        vol_ml = float(vol_str)
+        target_vol_ml = float(vol_str)
 
-    cv = -0.02
-    cv_str = input('Volume correction (mL, added to target volume) ' +
+    cv = 0.02
+    # TODO option to always use const cv?
+    cv_str = input('Initial volume correction (mL, added to target volume) ' +
         '(default={})? '.format(cv))
     if len(cv_str) != 0:
         cv = float(cv_str)
-    vol_ml = vol_ml + cv
+    vol_ml = target_vol_ml + cv
 
     max_aliquots = vialbox.n_cols * vialbox.n_rows
     # TODO TODO maybe make the default the max given vol in syringe?
@@ -459,13 +476,20 @@ if __name__ == '__main__':
         csv_file = 'aliquot_masses.csv'
         print('Will write aliquot weight data to {}'.format(csv_file))
         run_start_timestamp = datetime.now()
+        # TODO use multiline str syntax
+        header = ('run_start_timestamp, n, col, row, empty_vial_g, pfo_g' +
+            ', target_vol, syringe_cc, syringe_family, rate, ' +
+            'vol_correction, drip_wait, start_syringe_vol, vol_from_mass, ' +
+            'num_this_run, time_taken\n')
+        line_fmt_str = ', '.join(['{}'] * len(header.split(','))) + '\n'
+
         if not os.path.exists(csv_file):
-            header = 'run_start_timestamp, n, col, row, empty_vial_g, pfo_g\n'
+            # TODO maybe also replace header if differs / move existing
+            # file to some backup location in that case and then make a new one
+            # w/ current header
+            # TODO stop saving n?
             with open(csv_file, 'w') as f:
                 f.write(header)
-
-    # TODO TODO prompt for some amount by which to modify volume
-    # (probably additively) to correct for last drop
 
     # TODO TODO calculate and print total time program will take
 
@@ -476,8 +500,32 @@ if __name__ == '__main__':
     if len(start_n_str) != 0:
         # TODO maybe just get max from aliquot_masses.txt?
         start_n = int(start_n_str) + 1
+
+    # TODO need to account for cv? read from csv?
+    # (since pump get_vol_disp seems to reset across serial sessions)
+    pump.capacity = pump.capacity - (target_vol_ml * start_n)
+    # TODO delete
+    print('assuming syringe currently has vol of:', pump.capacity)
     #
+
+    # TODO allow this to be configurable?
+    pfo_density_g_ml = 0.85
+    target_mass = target_vol_ml * pfo_density_g_ml
+    # TODO delete print
+    print('target mass:', target_mass)
+    #
+
+    #
+    # TODO TODO TODO also save enough extra info to csv to use it to calculate
+    # appropriate calibrations (probably at least amt in syringe (maybe
+    # adjusting as stuff is aliquoted w/in a run), **correction factor**, wait
+    # times, rate[, possible to get whether scale is level from api?])
+    num_this_run = 0
+    last_time = time.time()
     for n in range(start_n, n_aliquots):
+        # TODO check this
+        curr_syringe_vol = pump.capacity - (num_this_run * start_n)
+
         print('Aliquot #{}'.format(n))
         i = n // vialbox.n_rows
         j = n % vialbox.n_rows
@@ -505,15 +553,53 @@ if __name__ == '__main__':
             pfo_weights[i, j] = pfo_g
 
             # TODO set err thresh based on some relative deviation from expected
-            # mass, given density of pfo?
+            # mass, given density of pfo? (and like print the list of those that
+            # passed?)
 
-            with open(csv_file, 'a') as f:
-                f.write('{}, {}, {}, {}, {}, {}\n'.format(run_start_timestamp,
-                    n, col_letter, row_num, empty_vial_g, pfo_g))
+            # TODO maybe bound cv in case there is an erratic scale reading?
+            # TODO check this formula...
+            '''
+            #cv = target_vol_ml - vol_from_mass
+            cv = vol_ml - vol_from_mass
+            #vol_ml = target_vol_ml + (target_vol_ml - vol_from_mass)
+            #vol_ml = target_vol_ml + (vol_ml - vol_from_mass)
+            vol_ml = target_vol_ml + cv
+            '''
+            vol_from_mass = pfo_g / pfo_density_g_ml
+            mass_err = target_mass - pfo_g
+            cv = mass_err / pfo_density_g_ml
+            # TODO check this is what i want
+            # TODO TODO TODO i don't think this is exactly what i want
+            # (if commanded vol from previous aliquot produced no error,
+            # we should keep the same commanded vol, and thus cv, whether
+            # cv == 0 or not)
+            # (until resolved, should switch back to constant cv)
+            # TODO TODO TODO keep some kind of running average / filtered
+            # estimate of cv
+            vol_ml = target_vol_ml + cv
+            # TODO probably delete these prints
+            print('pfo vol from mass: {:.2f} mL'.format(vol_from_mass))
+            print('mass_err: {:.2f}'.format(mass_err))
+            print('using new vol correction of: {:.2f}'.format(cv))
+            print('new commanded volume: {:.2f}'.format(vol_ml))
+            #
 
         # To keep backlash more consistent.
         robot.moveXY(approach_from)
         vialbox.put_indices(i, j)
+
+        curr_time = time.time()
+        time_taken = curr_time - last_time
+        last_time = curr_time
+
+        if weigh_aliquots:
+            with open(csv_file, 'a') as f:
+                f.write(line_fmt_str.format(run_start_timestamp,
+                    n, col_letter, row_num, empty_vial_g, pfo_g, target_vol_ml,
+                    cc, family, remote_rate, cv, drop_wait_s, curr_syringe_vol,
+                    vol_from_mass, num_this_run, time_taken))
+
+        num_this_run += 1
     
     # So box / scale can be picked up without the traveling part of the robot
     # getting in the way.
